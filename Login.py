@@ -11,17 +11,22 @@ import pathlib
 st.set_option("client.showSidebarNavigation", False)
 st.set_page_config(
     page_title="Streamlit SaaS Starter",
-    page_icon="🌍",
+    page_icon="🧠",
     layout="centered"
 )
+
 
 # Initialization with Supabase credentials
 SUPABASE_URL = st.secrets["SUPABASE_URL"]
 SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
 
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+@st.cache_resource
+def supabase_init_connection():
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
 
-st.title("Streamlit SaaS Starter Login Page")
+supabase: Client = supabase_init_connection()
+
+st.title("Login - Controle de Aulas")
 
 def main():
     # Configure Supabase authentication
@@ -35,7 +40,10 @@ def main():
     session = login_form(
         url=SUPABASE_URL,
         apiKey=SUPABASE_KEY,
-        providers=["github", "google"]
+        providers=[
+            # "github",
+            "google",
+        ]
     )
     if session:
         menu()
@@ -55,6 +63,7 @@ def main():
 
     if not session:
         unauthenticated_menu()
+
 
 if __name__ == "__main__":
     main()
