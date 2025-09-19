@@ -1,0 +1,22 @@
+# .dockerignore
+.git
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+.env
+.env.*
+*.ipynb_checkpoints
+.dist/
+.build/
+.cache/
+.pytest_cache/
+.mypy_cache/
+.idea/
+.vscode/
+.venv/
+.env/
+data/
+tests/
+docs/

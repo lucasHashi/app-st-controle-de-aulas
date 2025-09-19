@@ -1,45 +1,68 @@
-FROM python:3.11-slim as python-base
+# ====== STAGE 1: Build (instala e compila dependências) ======
+FROM python:3.11-bookworm AS builder
 
-# Install necessary system dependencies
-RUN apt-get update && \
-    apt-get install -y git gcc g++ python3-dev gdal-bin libgdal-dev docker.io
+# Evita interações e reduz logs do pip
+ENV DEBIAN_FRONTEND=noninteractive \
+    PIP_NO_CACHE_DIR=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# Allow statements and log messages to appear immediately in the logs
-ENV PYTHONUNBUFFERED 1
+# Só o necessário para compilar deps que precisam de headers (ex.: GDAL)
+RUN apt-get update && apt-get install --no-install-recommends -y \
+      build-essential \
+      git \
+      g++ \
+      gcc \
+      gdal-bin \
+      libgdal-dev \
+    && rm -rf /var/lib/apt/lists/*
 
-# Create a non-root user with home directory
-RUN useradd -m -u 1000 user
+# Ambiente isolado para deps Python
+WORKDIR /app
+COPY requirements.txt ./
 
-# Add user to the existing 'docker' group
-RUN usermod -aG docker user
+RUN python -m venv /opt/venv \
+ && /opt/venv/bin/pip install --upgrade pip wheel setuptools \
+ && GDAL_CONFIG=/usr/bin/gdal-config /opt/venv/bin/pip install -r requirements.txt
 
-# Set user and environment variables
-USER user
-ENV HOME=/home/user \
-    PATH=/home/user/.local/bin:$PATH \
+# ====== STAGE 2: Runtime (mínimo possível) ======
+FROM python:3.11-slim-bookworm
+
+# Apenas libs de RUNTIME (sem headers/dev). gdal-bin puxa libgdal em runtime.
+RUN apt-get update && apt-get install --no-install-recommends -y \
+      gdal-bin \
+      libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Variáveis e PATH para o venv
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    STREAMLIT_SERVER_FILE_WATCHER_TYPE=auto \
     GDAL_CONFIG=/usr/bin/gdal-config
 
-# Set the working directory in the container
-WORKDIR $HOME/app
+# Usuário não-root + diretórios necessários
+RUN useradd -ms /bin/bash appuser \
+ && mkdir -p /home/appuser/.streamlit /home/appuser/.cache \
+ && chown -R appuser:appuser /home/appuser
 
-# Copy the requirements.txt file to the container
-COPY requirements.txt $HOME/app/
+WORKDIR /app
 
-# Install Python dependencies from requirements.txt
-RUN pip install --user -r $HOME/app/requirements.txt
+# Copia o venv pronto do builder (menor imagem, sem toolchain)
+COPY --from=builder /opt/venv /opt/venv
 
-# Copy the application files, including app.py
-COPY --chown=user:user . $HOME/app/
+# Copia só o código da app
+# (Se usar .dockerignore, fica ainda menor)
+COPY --chown=appuser:appuser . /app
 
-# Ensure user has write permission to the app directory
-USER root
-RUN chmod -R 775 /home/user/.local/lib/python3.11/site-packages/streamlit/static
-COPY index.html /home/user/.local/lib/python3.11/site-packages/streamlit/static/index.html
-RUN chown -R user:user $HOME/app
-USER user
+# Garante que o usuário da app consegue ler/usar o venv
+RUN chown -R appuser:appuser /opt/venv
 
-# The application must listen on the port defined by the PORT environment variable.
-EXPOSE 8080
+USER appuser
 
-# Configure to run TaskWeaver with containerized code execution
-ENTRYPOINT [ "streamlit", "run", "app.py", "--server.port", "8080" ]
+# Porta do Streamlit
+EXPOSE 8501
+
+# Sobe o Streamlit com o Login.py
+# (bind explícito ao 0.0.0.0 para aceitar tráfego externo)
+CMD ["streamlit", "run", "Login.py", "--server.address=0.0.0.0", "--server.port=8501"]

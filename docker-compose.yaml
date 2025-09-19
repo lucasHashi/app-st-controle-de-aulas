@@ -1,0 +1,15 @@
+services:
+  app-controle-de-aulas:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: app-controle-de-aulas
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    environment:
+      STREAMLIT_SERVER_FILE_WATCHER_TYPE: "poll"
+    volumes:
+      - .:/app:delegated
+    # sem command: usa o CMD do Dockerfile
